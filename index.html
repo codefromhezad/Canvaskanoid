@@ -1,0 +1,441 @@
+<style>
+	#arkanoid-screen {
+		display: block;
+		margin: auto;
+		background: #eee;
+		border: 1px solid #888;
+	}
+</style>
+<script src="//code.jquery.com/jquery-1.11.2.min.js"></script>
+
+<canvas id="arkanoid-screen" width="560" height="600"></canvas>
+<div><span class="player-level"></span> / <span class="player-lives"></span></div>
+
+<script>
+	
+	if (!Date.now) {
+	    Date.now = function() { return new Date().getTime(); }
+	}
+
+	var levels = [
+		[
+			[50, 50, 50, 50, 50, 50, 50, 50, 50, 50],
+			[5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
+			[4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+			[3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+			[2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+			[1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+		],
+		[
+			[50, 50, 50, 50, 50, 50, 50, 50, 50, 50],
+			[1, 2, 5, 5, 5, 5, 5, 5, 2, 1],
+			[1, 2, 50, 4, 4, 4, 4, 50, 2, 1],
+			[1, 2, 50, 3, 50, 50, 3, 50, 2, 1],
+			[1, 2, 50, 2, 2, 2, 2, 50, 2, 1],
+			[1, 2, 1, 1, 1, 1, 1, 1, 2, 1],
+		]
+	];
+
+	var DEFAULT_BALL_RADIUS = 7;
+	var DEFAULT_BALL_SPEED = 6;
+	var DEFAULT_POWERUP_SPEED = 6;
+	var DEFAULT_PAD_WIDTH = 100;
+
+	var Arkanoid = function() {
+		this.brickHeight = 20;
+
+		this.playerPadY = 550;
+		this.playerPadWidth = DEFAULT_PAD_WIDTH;
+		this.playerPadHeight = 20;
+
+		this.playerLives = 3;
+
+		this.bricksTypes = {
+			0: null,
+			1: { style: '#0f0', name: 'green', hitsForDestruct: 1 },
+			2: { style: '#f0f', name: 'violet', hitsForDestruct: 1 },
+			3: { style: '#00f', name: 'blue', hitsForDestruct: 1 },
+			4: { style: '#ff0', name: 'yellow', hitsForDestruct: 1 },
+			5: { style: '#f00', name: 'red', hitsForDestruct: 1 },
+			50: { style: '#aaa', name: 'grey', hitsForDestruct: 4 },
+		}
+
+		this.powerUps = {
+			'speed*2': { probability: 0.1, style: 'red' },
+			'larger-pad': { probability: 0.1, style: 'blue' },
+			'smaller-pad': { probability: 0.1, style: 'orange' },
+			'add-ball': { probability: 0.1, style: 'cyan' },
+		}
+		this.onScreenPowerUps = [];
+		this.powerUpSpeed = DEFAULT_POWERUP_SPEED;
+
+		this.currentLevel = 0;
+
+		this.canvas = document.getElementById('arkanoid-screen');
+		this.ctx 	= this.canvas.getContext('2d');
+
+		this.width  = this.canvas.width;
+		this.height = this.canvas.height;
+
+		this.levelMap = null;
+
+		this.playerPadX = Math.floor((this.width - this.playerPadWidth) * 0.5);
+		this.mouseX     = null;
+
+		this.ballRadius  = DEFAULT_BALL_RADIUS;
+		this.ballSpeed   = DEFAULT_BALL_SPEED;
+
+		this.balls = [
+			{ position: null, vector: null }
+		];
+
+		this.totalLevelBlocks = null;
+
+		this.launched = false;
+
+		this.loadLevel = function(levelIndex) {
+			var level = levels[levelIndex];
+			this.currentLevel = levelIndex;
+
+			this.numBricksPerLine = level[0].length;
+			this.brickWidth = this.width / this.numBricksPerLine;
+
+			this.levelMap = level;
+			this.totalLevelBlocks = 0;
+
+			for(var j = 0; j < this.levelMap.length; j++) {
+				for(var i = 0; i < this.levelMap[j].length; i++) {
+					if( this.levelMap[j][i] ) {
+						this.totalLevelBlocks += 1;
+					}
+				}
+			}
+
+			this.resetPlayerPosition();
+		}
+
+		this.nextLevel = function() {
+			if( levels.length <= this.currentLevel + 1 ) {
+				// Game won !
+				console.log('You beat the game !');
+				return;
+			} 
+
+			this.loadLevel(this.currentLevel + 1);
+		}
+
+		this.resetPlayerPosition = function() {
+
+			this.launched = false;
+
+			this.onScreenPowerUps = [];
+
+			this.ballRadius   = DEFAULT_BALL_RADIUS;
+			this.ballSpeed    = DEFAULT_BALL_SPEED;
+			this.playerPadWidth = DEFAULT_PAD_WIDTH;
+
+			this.playerPadX = Math.floor((this.width - this.playerPadWidth) * 0.5);
+			
+			this.balls = [];
+			this.addBall();
+
+			// Update UI on reset player position
+			$('.player-level').html('Level ' + (this.currentLevel + 1));
+			$('.player-lives').html(this.playerLives + ' lives');
+		}
+
+		this.addBall = function() {
+			var initialAngle  = Math.PI * 0.25 + Math.random() * Math.PI * 0.5;
+			
+			this.balls.push({ 
+				position: {x: this.playerPadX + Math.floor(this.playerPadWidth * 0.5), y: this.playerPadY - this.ballRadius},
+				vector: { x: Math.cos(initialAngle), y: - Math.sin(initialAngle) }
+			});
+		}
+
+		this.buildListeners = function() {
+			var that = this;
+
+			$(this.canvas).mousemove( function(e) {
+				that.mouseX = Math.min(that.width, Math.max(0, Math.floor(e.pageX - $(this).offset().left)));
+			}).click( function(e) {
+				e.preventDefault();
+				
+				that.launched = that.launched ? false : true;
+
+				return false;
+			});
+
+			$(document).on('touchmove', function(e) {
+				e.preventDefault();
+				var touch = e.originalEvent.touches[0] || e.originalEvent.changedTouches[0];
+				that.mouseX = Math.min(that.width, Math.max(0, Math.floor(touch.pageX - $(that.canvas).offset().left)));
+				return false;
+			});
+		}
+
+		this.launchPowerUp = function(x, y) {
+			var rnd = Math.random();
+			var availablePowerUps = [];
+
+			for(var i in this.powerUps) {
+				if( this.powerUps[i].probability > rnd ) {
+					availablePowerUps.push(i);
+				}
+			}
+
+			if( availablePowerUps.length ) {
+				var rndSelector = Math.floor(Math.random() * availablePowerUps.length);
+				var selectedPowerUp = availablePowerUps[ rndSelector ];
+				this.onScreenPowerUps.push({
+					type: selectedPowerUp,
+					x: x,
+					y: y,
+					w: 12,
+					h: 12
+				});
+			}
+		}
+
+		this.applyPowerUp = function(powerUpObject) {
+			switch(powerUpObject.type) {
+				case 'speed*2':
+					this.ballSpeed = DEFAULT_BALL_SPEED * 2;
+					break;
+				case 'larger-pad':
+					this.playerPadWidth = DEFAULT_PAD_WIDTH * 1.5;
+					break;
+				case 'smaller-pad':
+					this.playerPadWidth = DEFAULT_PAD_WIDTH * 0.75;
+					break;
+				case 'add-ball':
+					this.addBall();
+					break;
+			}
+		}
+
+		this.update = function() {
+
+			if( ! this.launched ) {
+				return;
+			}
+
+			// Update player pad position
+			if( this.mouseX !== null ) {
+				this.playerPadX = Math.min(this.width-this.playerPadWidth, Math.max(0, Math.floor(this.mouseX - this.playerPadWidth * 0.5)));
+			}
+
+			// Handle balls
+			for(var n in this.balls) {
+
+				var ballPosition = this.balls[n].position;
+				var ballVector = this.balls[n].vector;
+
+				// Update ball position
+				var prevX = ballPosition.x;
+				var prevY = ballPosition.y;
+				ballPosition.x += this.ballSpeed * ballVector.x;
+				ballPosition.y += this.ballSpeed * ballVector.y;
+
+				var ballLeft   = ballPosition.x - this.ballRadius;
+				var ballRight  = ballPosition.x + this.ballRadius;
+				var ballTop    = ballPosition.y - this.ballRadius;
+				var ballBottom = ballPosition.y + this.ballRadius;
+
+				// Bounce ball on LEFT/RIGHT walls
+				if( ballLeft < 0 || ballRight > this.width ) {
+					ballPosition.x = prevX;
+					ballPosition.y = prevY;
+					ballVector.x   = - ballVector.x;
+				}
+
+				// Bounce ball on TOP wall
+				if( ballTop < 0 ) {
+					ballPosition.x = prevX;
+					ballPosition.y = prevY;
+					ballVector.y   = - ballVector.y;
+				}
+
+				// Bounce ball on player pad
+				if( ballBottom > this.playerPadY && ballTop < this.playerPadY + this.playerPadHeight ) {
+					if( ballRight > this.playerPadX && ballLeft < this.playerPadX + this.playerPadWidth ) {
+						ballPosition.x = prevX;
+						ballPosition.y = prevY;
+						ballVector.y   = - ballVector.y;
+					}
+				}
+
+				// Handling missed ball
+				if( ballPosition.y > this.height ) {
+					this.balls.splice(n, 1);
+
+					if( this.balls.length == 0 ) {
+						this.playerLives -= 1;
+						this.resetPlayerPosition();
+					}
+
+					n = 0;
+					continue;
+				}
+
+				// Handling bricks collision
+				bricks_loop:
+				for(var j = 0; j < this.levelMap.length; j++) {
+					for(var i = 0; i < this.levelMap[j].length; i++) {
+						var brickId = this.levelMap[j][i];
+
+						if( brickId ) {
+							var brickData = this.bricksTypes[brickId];
+
+							var px = i * this.brickWidth;
+							var py = j * this.brickHeight;
+
+							// Collision
+							if( ballRight > px && ballLeft < px + this.brickWidth && ballTop < py + this.brickHeight && ballBottom > py ) {
+								
+								ballPosition.x = prevX;
+								ballPosition.y = prevY;
+
+								if( ballPosition.y < py || ballPosition.y > py + this.brickHeight ) {
+									ballVector.y   = - ballVector.y;
+								}
+
+								if( ballPosition.x < px || ballPosition.x > px + this.brickWidth ) {
+									ballVector.x   = - ballVector.x;
+								}
+
+								this.launchPowerUp(px + this.brickWidth * 0.5, py);
+
+								brickData.hitsForDestruct -= 1;
+
+								if( brickData.hitsForDestruct <= 0 ) {
+									this.levelMap[j][i] = 0;
+									this.totalLevelBlocks -= 1;
+
+									if( this.totalLevelBlocks <= 0 ) {
+										this.nextLevel();
+									}
+								}
+
+								break bricks_loop;
+							}
+						}
+					}
+				}
+			}
+			
+			// Handling Power Ups movement
+			for(var i = 0; i < this.onScreenPowerUps.length; i++) {
+				this.onScreenPowerUps[i].y += this.powerUpSpeed;
+
+				if( this.onScreenPowerUps[i].y > this.height ) {
+					this.onScreenPowerUps.splice(i, 1);
+					i = 0;
+					continue;
+				}
+
+				if( this.onScreenPowerUps[i].y + this.onScreenPowerUps[i].w * 0.5 > this.playerPadY && this.onScreenPowerUps[i].y - this.onScreenPowerUps[i].w * 0.5 < this.playerPadY + this.playerPadHeight ) {
+				
+					if( this.onScreenPowerUps[i].x + this.onScreenPowerUps[i].w * 0.5 > this.playerPadX && this.onScreenPowerUps[i].x - this.onScreenPowerUps[i].w * 0.5 < this.playerPadX + this.playerPadWidth ) {
+						
+						this.applyPowerUp(this.onScreenPowerUps[i]);
+
+						this.onScreenPowerUps.splice(i, 1);
+						i = 0;
+						continue;
+					}
+				}
+			}
+		}
+
+		this.render = function() {
+
+			this.ctx.beginPath();
+			this.ctx.clearRect(0, 0, this.width, this.height);
+			this.ctx.closePath();
+
+			// Render bricks
+			for(var j = 0; j < this.levelMap.length; j++) {
+				for(var i = 0; i < this.levelMap[j].length; i++) {
+					var brickId = this.levelMap[j][i];
+
+					if( brickId ) {
+						var brickData = this.bricksTypes[brickId];
+
+						var px = i * this.brickWidth;
+						var py = j * this.brickHeight;
+
+						this.ctx.beginPath();
+						this.ctx.fillStyle = brickData.style;
+						this.ctx.fillRect(px + 1, py + 1, this.brickWidth - 2, this.brickHeight - 2);
+						this.ctx.closePath();
+
+					}
+				}
+			}
+
+			// Render Player Pad
+			this.ctx.beginPath();
+			this.ctx.fillStyle = "#404040";
+			this.ctx.fillRect(this.playerPadX, this.playerPadY, this.playerPadWidth, this.playerPadHeight);
+			this.ctx.closePath();
+
+			// Render Balls
+			for(var n in this.balls) {
+				this.ctx.beginPath();
+				this.ctx.fillStyle = "#404040";
+				this.ctx.fillRect(this.balls[n].position.x - this.ballRadius, this.balls[n].position.y - this.ballRadius, this.ballRadius * 2, this.ballRadius * 2);
+				this.ctx.closePath();
+			}
+
+			// Render power ups
+			for(var i = 0; i < this.onScreenPowerUps.length; i++) {
+				this.ctx.beginPath();
+				this.ctx.fillStyle = this.powerUps[this.onScreenPowerUps[i].type].style;
+				this.ctx.fillRect(
+					this.onScreenPowerUps[i].x - this.onScreenPowerUps[i].w * 0.5,
+					this.onScreenPowerUps[i].y - this.onScreenPowerUps[i].w * 0.5, 
+					this.onScreenPowerUps[i].w,
+					this.onScreenPowerUps[i].w
+				);
+				this.ctx.closePath();
+			}
+		}
+
+		this.gameLoop = function() {
+			var that = this;
+			var fps = 40;
+			var now;
+			var then = Date.now();
+			var interval = 1000/fps;
+			var delta;
+
+			function step() {
+				requestAnimationFrame(step);
+
+				now = Date.now();
+    			delta = now - then;
+
+    			if (delta > interval) {
+    				that.update();
+					that.render();
+
+    				then = now - (delta % interval);
+    			}
+			}
+
+			step();
+		}
+	}
+
+	/* Main() */
+
+	var game = new Arkanoid();
+
+	game.buildListeners();
+	game.loadLevel(0);
+
+	game.gameLoop();
+
+</script>
+
