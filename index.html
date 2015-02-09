@@ -2,7 +2,7 @@
 	#arkanoid-screen {
 		display: block;
 		margin: auto;
-		background: #eee;
+		background: rgb(230, 227, 217);
 		border: 1px solid #888;
 	}
 </style>
@@ -37,7 +37,7 @@
 	];
 
 	var DEFAULT_BALL_RADIUS = 7;
-	var DEFAULT_BALL_SPEED = 6;
+	var DEFAULT_BALL_SPEED = 8;
 	var DEFAULT_POWERUP_SPEED = 6;
 	var DEFAULT_PAD_WIDTH = 100;
 
@@ -52,19 +52,19 @@
 
 		this.bricksTypes = {
 			0: null,
-			1: { style: '#0f0', name: 'green', hitsForDestruct: 1 },
-			2: { style: '#f0f', name: 'violet', hitsForDestruct: 1 },
-			3: { style: '#00f', name: 'blue', hitsForDestruct: 1 },
-			4: { style: '#ff0', name: 'yellow', hitsForDestruct: 1 },
-			5: { style: '#f00', name: 'red', hitsForDestruct: 1 },
-			50: { style: '#aaa', name: 'grey', hitsForDestruct: 4 },
+			1: { style: '#71d4bc', name: 'green', hitsForDestruct: 1 },
+			2: { style: '#9d8fee', name: 'violet', hitsForDestruct: 1 },
+			3: { style: '#85c4ff', name: 'blue', hitsForDestruct: 1 },
+			4: { style: '#f7c632', name: 'yellow', hitsForDestruct: 1 },
+			5: { style: '#fc5555', name: 'red', hitsForDestruct: 1 },
+			50: { style: '#252525', name: 'grey', hitsForDestruct: 4 },
 		}
 
 		this.powerUps = {
 			'speed*2': { probability: 0.1, style: 'red' },
 			'larger-pad': { probability: 0.1, style: 'blue' },
 			'smaller-pad': { probability: 0.1, style: 'orange' },
-			'add-ball': { probability: 0.1, style: 'cyan' },
+			'add-ball': { probability: 0.15, style: 'cyan' },
 		}
 		this.onScreenPowerUps = [];
 		this.powerUpSpeed = DEFAULT_POWERUP_SPEED;
@@ -376,14 +376,14 @@
 
 			// Render Player Pad
 			this.ctx.beginPath();
-			this.ctx.fillStyle = "#404040";
+			this.ctx.fillStyle = "#252525";
 			this.ctx.fillRect(this.playerPadX, this.playerPadY, this.playerPadWidth, this.playerPadHeight);
 			this.ctx.closePath();
 
 			// Render Balls
 			for(var n in this.balls) {
 				this.ctx.beginPath();
-				this.ctx.fillStyle = "#404040";
+				this.ctx.fillStyle = "#252525";
 				this.ctx.fillRect(this.balls[n].position.x - this.ballRadius, this.balls[n].position.y - this.ballRadius, this.ballRadius * 2, this.ballRadius * 2);
 				this.ctx.closePath();
 			}
