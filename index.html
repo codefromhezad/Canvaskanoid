@@ -2,25 +2,74 @@
 <html>
 <head>
 	<style>
+		body {
+			padding: 0;
+			margin: 0;
+			font-family: 'Helvetica Neue', Helvetica, Arial, Verdana, Sans;
+		}
+
+		.wrapper {
+			width: 560px;
+			margin: auto;
+			border: 1px solid #888;
+		}
+
+		.indicator {
+			background: #252525;
+			color: #fafafa;
+			padding: 8px 10px;
+			line-height: 14px;
+			text-transform: uppercase;
+			font-size: 14px;
+		}
+
+		.player-lives {
+			float: right;
+		}
+
+		.player-lives i {
+			display: inline-block;
+			background: #fc5555;
+			margin-left: 5px;
+			width: 14px;
+			height: 14px;
+			-webkit-border-radius: 20px;
+			border-radius: 20px;
+		}
+
 		#arkanoid-screen {
 			display: block;
 			margin: auto;
 			background: rgb(230, 227, 217);
-			border: 1px solid #888;
 		}
 	</style>
 	<script src="//code.jquery.com/jquery-1.11.2.min.js"></script>
 	<script src="lowlag.js"></script>
 </head>
 </body>
-
-	<canvas id="arkanoid-screen" width="560" height="600"></canvas>
-	<div><span class="player-level"></span> / <span class="player-lives"></span></div>
+	
+	<div class="wrapper">
+		<div class="indicator">
+			<span class="player-level">Level 1</span>
+			<span class="player-lives"><i></i><i></i><i></i></span>
+		</div>
+		<canvas id="arkanoid-screen" width="560" height="600"></canvas>
+	</div>
 
 	<script>
 		
 		if (!Date.now) {
 		    Date.now = function() { return new Date().getTime(); }
+		}
+
+		function rotateVector(vec, angle) {
+		    var ca = Math.cos(angle);
+		    var sa = Math.sin(angle);
+
+		    return {
+		    	x: vec.x * ca - vec.y * sa,
+		    	y: vec.x * sa + vec.y * ca
+		    };
 		}
 
 		var levels = [
@@ -44,7 +93,7 @@
 
 		var DEFAULT_BALL_RADIUS = 7;
 		var DEFAULT_BALL_SPEED = 8;
-		var DEFAULT_POWERUP_SPEED = 6;
+		var DEFAULT_POWERUP_SPEED = 7;
 		var DEFAULT_PAD_WIDTH = 100;
 
 		var Arkanoid = function() {
@@ -69,10 +118,10 @@
 			this.sounds = {};
 
 			this.powerUps = {
-				'speed*2': { probability: 0.1, style: 'red' },
-				'larger-pad': { probability: 0.1, style: 'blue' },
-				'smaller-pad': { probability: 0.1, style: 'orange' },
-				'add-ball': { probability: 0.15, style: 'cyan' },
+				'speed*2': { probability: 0.1, style: 'red', letter: 'F' },
+				'larger-pad': { probability: 0.1, style: 'blue', letter: 'L' },
+				'smaller-pad': { probability: 0.1, style: 'orange', letter: 'S' },
+				'add-ball': { probability: 0.15, style: 'cyan', letter: 'B' },
 			}
 			this.onScreenPowerUps = [];
 			this.powerUpSpeed = DEFAULT_POWERUP_SPEED;
@@ -98,6 +147,9 @@
 			];
 
 			this.totalLevelBlocks = null;
+			this.currentChord = "n";
+			this.ribbonIndex = 0;
+			this.chordRibbon = [1, 2, 3, 4, 2, 3, 4, 5];
 
 			this.launched = false;
 
@@ -149,7 +201,11 @@
 
 				// Update UI on reset player position
 				$('.player-level').html('Level ' + (this.currentLevel + 1));
-				$('.player-lives').html(this.playerLives + ' lives');
+				var plives = '';
+				for(var i = 0; i < this.playerLives; i++) {
+					plives += "<i></i>";
+				}
+				$('.player-lives').html(plives);
 			}
 
 			this.addBall = function() {
@@ -161,6 +217,16 @@
 				});
 			}
 
+			this.playRandomNote = function() {
+				lowLag.play(this.currentChord+this.chordRibbon[this.ribbonIndex]);
+
+				this.ribbonIndex += 1;
+				if( this.ribbonIndex >= this.chordRibbon.length ) {
+					this.ribbonIndex = 0;
+					this.currentChord = this.currentChord == "o" ? "n" : "o";
+				}
+			}
+
 			this.buildListeners = function() {
 				var that = this;
 
@@ -170,11 +236,11 @@
 					e.preventDefault();
 					
 					that.launched = that.launched ? false : true;
-					lowLag.load(["bounce1.mp3", "bounce1.wav"],"bounce1");
-					lowLag.load(["bounce2.mp3", "bounce2.wav"],"bounce2");
-
-					lowLag.play("bounce1");
-					lowLag.play("bounce2");
+					
+					for(var i = 1; i <= 5; i++) {
+						lowLag.load(["sounds/n"+i+".mp3", "sounds/n"+i+".wav"], "n"+i);
+						lowLag.load(["sounds/o"+i+".mp3", "sounds/o"+i+".wav"], "o"+i);
+					}
 
 					return false;
 				});
@@ -261,7 +327,7 @@
 						ballPosition.y = prevY;
 						ballVector.x   = - ballVector.x;
 
-						lowLag.play("bounce1");
+						this.playRandomNote();
 					}
 
 					// Bounce ball on TOP wall
@@ -270,7 +336,7 @@
 						ballPosition.y = prevY;
 						ballVector.y   = - ballVector.y;
 
-						lowLag.play("bounce1");
+						this.playRandomNote();
 					}
 
 					// Bounce ball on player pad
@@ -280,7 +346,11 @@
 							ballPosition.y = prevY;
 							ballVector.y   = - ballVector.y;
 
-							lowLag.play("bounce1");
+							var bOffset = 1 - 2 * (ballLeft + this.ballRadius - this.playerPadX) / this.playerPadWidth;
+
+							ballVector = rotateVector( ballVector, bOffset * Math.PI / 4 );
+
+							this.playRandomNote();
 						}
 					}
 
@@ -327,7 +397,7 @@
 
 									brickData.hitsForDestruct -= 1;
 
-									lowLag.play("bounce1");
+									this.playRandomNote();
 
 									if( brickData.hitsForDestruct <= 0 ) {
 										this.levelMap[j][i] = 0;
@@ -420,6 +490,14 @@
 						this.onScreenPowerUps[i].w
 					);
 					this.ctx.closePath();
+
+					this.ctx.font = "bold 12px sans-serif";
+					this.ctx.fillStyle = "#252525";
+					this.ctx.fillText(
+						this.powerUps[this.onScreenPowerUps[i].type].letter,
+						this.onScreenPowerUps[i].x - this.onScreenPowerUps[i].w, 
+						this.onScreenPowerUps[i].y - this.onScreenPowerUps[i].w
+					);
 				}
 			}
 
@@ -451,7 +529,7 @@
 
 		/* Main() */
 
-		lowLag.init();
+		lowLag.init({debug: 'none'});
 
 		var game = new Arkanoid();
 
